@@ -63,7 +63,7 @@ class KestrelHandler(val session: IoSession, val config: Config) extends Actor {
     loop {
       react {
         case MinaMessage.MessageReceived(msg) =>
-          handle(msg.asInstanceOf[memcache.Request])
+          handle(msg.asInstanceOf[Command])
 
         case MinaMessage.ExceptionCaught(cause) => {
           cause.getCause match {
@@ -106,73 +106,54 @@ class KestrelHandler(val session: IoSession, val config: Config) extends Actor {
     session.write(new memcache.Response(buffer))
   }
 
-  private def handle(request: memcache.Request) = {
-    request.line(0) match {
-      case "GET" => get(request.line(1))
-      case "SET" =>
-        try {
-          set(request.line(1), request.line(2).toInt, request.line(3).toInt, request.data.get)
-        } catch {
-          case e: NumberFormatException =>
-            throw new ProtocolError("bad request: " + request)
-        }
-      case "STATS" => stats
-      case "SHUTDOWN" => shutdown
-      case "RELOAD" =>
-        Configgy.reload
-        writeResponse("Reloaded config.\r\n")
-      case "FLUSH" =>
-        flush(request.line(1))
-      case "FLUSH_ALL" =>
-        for (qName <- Kestrel.queues.queueNames) {
-          Kestrel.queues.flush(qName)
-        }
-        writeResponse("Flushed all queues.\r\n")
-      case "DUMP_CONFIG" =>
-        dumpConfig()
-      case "DUMP_STATS" =>
-        dumpStats()
-      case "DELETE" =>
-        delete(request.line(1))
-      case "FLUSH_EXPIRED" =>
-        flushExpired(request.line(1))
-      case "FLUSH_ALL_EXPIRED" =>
-        val flushed = Kestrel.queues.queueNames.foldLeft(0) { (sum, qName) => sum + Kestrel.queues.flushExpired(qName) }
-        writeResponse("%d\r\n".format(flushed))
-      case "VERSION" =>
-        version()
+  private def handle(request: Command) = {
+    request match {
+      case GetCommand(queueName, options) => get(queueName, options)
+      case SetCommand(queueName, flags, expiry, data) => set(queueName, flags, expiry, data)
+      case FlushCommand(queueName) => flush(queueName)
+      
+      case OtherCommand(line) => {
+        line(0) match {
+	      case "STATS" => stats
+	      case "SHUTDOWN" => shutdown
+	      case "RELOAD" =>
+	        Configgy.reload
+	        writeResponse("Reloaded config.\r\n")
+	      case "FLUSH_ALL" =>
+	        for (qName <- Kestrel.queues.queueNames) {
+	          Kestrel.queues.flush(qName)
+	        }
+	        writeResponse("Flushed all queues.\r\n")
+	      case "DUMP_CONFIG" =>
+	        dumpConfig()
+	      case "DUMP_STATS" =>
+	        dumpStats()
+	      case "DELETE" =>
+	        delete(line(1))
+	      case "FLUSH_EXPIRED" =>
+	        flushExpired(line(1))
+	      case "FLUSH_ALL_EXPIRED" =>
+	        val flushed = Kestrel.queues.queueNames.foldLeft(0) { (sum, qName) => sum + Kestrel.queues.flushExpired(qName) }
+	        writeResponse("%d\r\n".format(flushed))
+	      case "VERSION" =>
+	        version()
+	    }
+      }
     }
   }
 
-  private def get(name: String): Unit = {
-    var key = name
-    var timeout = 0
-    var closing = false
-    var opening = false
-    var aborting = false
-    var peeking = false
-
-    if (name contains '/') {
-      val options = name.split("/")
-      key = options(0)
-      for (i <- 1 until options.length) {
-        val opt = options(i)
-        if (opt startsWith "t=") {
-          timeout = opt.substring(2).toInt
-        }
-        if (opt == "close") closing = true
-        if (opt == "open") opening = true
-        if (opt == "abort") aborting = true
-        if (opt == "peek") peeking = true
-      }
+  private def get(name: String, options: Options): Unit = {
+    val key = name
+    val timeout : Int = options.timeout match {
+      case Some(t) => t
+      case None => 0
     }
+    val closing = options.closing
+    val opening = options.opening
+    val aborting = options.aborting
+    val peeking = options.peeking
+
     log.debug("get -> q=%s t=%d open=%s close=%s abort=%s peek=%s", key, timeout, opening, closing, aborting, peeking)
-
-    if ((key.length == 0) || ((peeking || aborting) && (opening || closing)) || (peeking && aborting)) {
-      writeResponse("CLIENT_ERROR\r\n")
-      session.close
-      return
-    }
 
     try {
       if (aborting) {

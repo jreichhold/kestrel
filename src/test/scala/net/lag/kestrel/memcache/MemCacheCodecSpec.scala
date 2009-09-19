@@ -23,6 +23,7 @@ import org.apache.mina.core.session.{DummySession, IoSession}
 import org.apache.mina.filter.codec._
 import org.specs._
 
+import net.lag.kestrel.{Command, GetCommand, OtherCommand}
 
 object MemCacheCodecSpec extends Specification {
 
@@ -43,49 +44,53 @@ object MemCacheCodecSpec extends Specification {
       written = Nil
     }
 
+    def doDecode(s:String): Unit = memcache.Codec.decoder.decode(fakeSession, IoBuffer.wrap(s.getBytes), fakeDecoderOutput)
 
     "'get' request chunked various ways" in {
-      val decoder = memcache.Codec.decoder
-
-      decoder.decode(fakeSession, IoBuffer.wrap("get foo\r\n".getBytes), fakeDecoderOutput)
-      written mustEqual List(Request(List("GET", "foo"), None))
+      doDecode("get foo\r\n")
+      written mustEqual List(GetCommand("foo", NoOptions))
       written = Nil
 
-      decoder.decode(fakeSession, IoBuffer.wrap("get f".getBytes), fakeDecoderOutput)
+      doDecode("get f")
       written mustEqual Nil
-      decoder.decode(fakeSession, IoBuffer.wrap("oo\r\n".getBytes), fakeDecoderOutput)
-      written mustEqual List(Request(List("GET", "foo"), None))
+      doDecode("oo\r\n")
+      written mustEqual List(GetCommand("foo", NoOptions))
       written = Nil
 
-      decoder.decode(fakeSession, IoBuffer.wrap("g".getBytes), fakeDecoderOutput)
+      doDecode("g")
       written mustEqual Nil
-      decoder.decode(fakeSession, IoBuffer.wrap("et foo\r".getBytes), fakeDecoderOutput)
+      doDecode("et foo\r")
       written mustEqual Nil
-      decoder.decode(fakeSession, IoBuffer.wrap("\nget ".getBytes), fakeDecoderOutput)
-      written mustEqual List(Request(List("GET", "foo"), None))
-      decoder.decode(fakeSession, IoBuffer.wrap("bar\r\n".getBytes), fakeDecoderOutput)
-      written mustEqual List(Request(List("GET", "bar"), None), Request(List("GET", "foo"), None))
+      doDecode("\nget ")
+      written mustEqual List(GetCommand("foo", NoOptions))
+      doDecode("bar\r\n")
+      written mustEqual List(GetCommand("bar", NoOptions), GetCommand("foo", NoOptions))
     }
 
+    "'get' with options" in {
+      doDecode("get foo/t=5/close/open\r\n")
+      written mustEqual List(GetCommand("foo", Options(Some(5), true, true, false, false)))
+    }
+    
     "'set' request chunked various ways" in {
-      val decoder = memcache.Codec.decoder
-
-      decoder.decode(fakeSession, IoBuffer.wrap("set foo 0 0 5\r\nhello\r\n".getBytes), fakeDecoderOutput)
-      written.mkString(",") mustEqual "<Request: [SET foo 0 0 5]: 68656c6c6f>"
+      def bytes(s:String) = s.getBytes("ISO-8859-1")
+      
+      doDecode("set foo 0 0 5\r\nhello\r\n")
+      written mustEqual List(SetCommand("foo", 0, 0, bytes("hello")))
       written = Nil
 
-      decoder.decode(fakeSession, IoBuffer.wrap("set foo 0 0 5\r\n".getBytes), fakeDecoderOutput)
+      doDecode("set foo 0 0 5\r\n")
       written mustEqual Nil
-      decoder.decode(fakeSession, IoBuffer.wrap("hello\r\n".getBytes), fakeDecoderOutput)
-      written.mkString(",") mustEqual "<Request: [SET foo 0 0 5]: 68656c6c6f>"
+      doDecode("hello\r\n")
+      written mustEqual List(SetCommand("foo", 0, 0, bytes("hello")))
       written = Nil
 
-      decoder.decode(fakeSession, IoBuffer.wrap("set foo 0 0 5".getBytes), fakeDecoderOutput)
+      doDecode("set foo 0 0 5")
       written mustEqual Nil
-      decoder.decode(fakeSession, IoBuffer.wrap("\r\nhell".getBytes), fakeDecoderOutput)
+      doDecode("\r\nhell")
       written mustEqual Nil
-      decoder.decode(fakeSession, IoBuffer.wrap("o\r\n".getBytes), fakeDecoderOutput)
-      written.mkString(",") mustEqual "<Request: [SET foo 0 0 5]: 68656c6c6f>"
+      doDecode("o\r\n")
+      written mustEqual List(SetCommand("foo", 0, 0, bytes("hello")))
       written = Nil
     }
   }

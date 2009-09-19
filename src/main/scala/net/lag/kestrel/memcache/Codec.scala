@@ -25,15 +25,16 @@ import net.lag.extensions._
 import net.lag.naggati.{Decoder, End, ProtocolError, Step}
 import net.lag.naggati.Steps._
 
+//import net.lag.kestrel.{Options, Command, GetCommand, SetCommand, OtherCommand}
 
-case class Request(line: List[String], data: Option[Array[Byte]]) {
-  override def toString = {
-    "<Request: " + line.mkString("[", " ", "]") + (data match {
-      case None => ""
-      case Some(x) => ": " + x.hexlify
-    }) + ">"
-  }
-}
+//case class Request(line: List[String], data: Option[Array[Byte]]) {
+//  override def toString = {
+//    "<Request: " + line.mkString("[", " ", "]") + (data match {
+//      case None => ""
+//      case Some(x) => ": " + x.hexlify
+//    }) + ">"
+//  }
+//}
 
 case class Response(data: IoBuffer)
 
@@ -61,6 +62,7 @@ object Codec {
     segments(0) = segments(0).toUpperCase
 
     val command = segments(0)
+    
     if (! KNOWN_COMMANDS.contains(command)) {
       throw new ProtocolError("Invalid command: " + command)
     }
@@ -76,11 +78,56 @@ object Codec {
         val bytes = new Array[Byte](dataBytes)
         state.buffer.get(bytes)
         state.buffer.position(state.buffer.position + 2)
-        state.out.write(Request(segments.toList, Some(bytes)))
+        
+	    try {
+          state.out.write(SetCommand(segments(1), segments(2).toInt, segments(3).toInt, bytes))
+	    } catch {
+	      case e: NumberFormatException =>
+	        throw new ProtocolError("bad request: " + line)
+	    }
         End
       }
+
     } else {
-      state.out.write(Request(segments.toList, None))
+      val res = command match {
+        case "GET" => {
+      	  val name = segments(1)
+         
+          var key = name
+          var timeout:Option[Int] = None
+          var closing = false
+          var opening = false
+          var aborting = false
+          var peeking = false
+
+          if (name contains '/') {
+        	val options = name.split("/")
+        	key = options(0)
+        	for (i <- 1 until options.length) {
+        	  val opt = options(i)
+        	  if (opt startsWith "t=") {
+        	    timeout = Some(opt.substring(2).toInt)
+	          }
+	          if (opt == "close") closing = true
+	          if (opt == "open") opening = true
+	          if (opt == "abort") aborting = true
+	          if (opt == "peek") peeking = true
+	        }
+	      }
+      	  
+          if ((key.length == 0) || ((peeking || aborting) && (opening || closing)) || (peeking && aborting)) {
+            throw new ProtocolError("bad request: " + line)
+          }
+
+      	  GetCommand(key, Options(timeout, closing, opening, aborting, peeking))
+      	}
+       
+        case "FLUSH" => FlushCommand(segments(0))
+        
+      	case _ => OtherCommand(segments.toList)
+      }
+
+      state.out.write(res)
       End
     }
   })
