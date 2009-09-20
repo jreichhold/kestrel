@@ -110,96 +110,87 @@ class KestrelHandler(val session: IoSession, val config: Config) extends Actor {
     request match {
       case GetCommand(queueName, options) => get(queueName, options)
       case SetCommand(queueName, flags, expiry, data) => set(queueName, flags, expiry, data)
-      case FlushCommand(queueName) => flush(queueName)
+      case DeleteCommand(queueName) => delete(queueName)
+      case StatsCommand => stats
+      case ShutdownCommand => shutdown
       
-      case OtherCommand(line) => {
-        line(0) match {
-	      case "STATS" => stats
-	      case "SHUTDOWN" => shutdown
-	      case "RELOAD" =>
-	        Configgy.reload
-	        writeResponse("Reloaded config.\r\n")
-	      case "FLUSH_ALL" =>
-	        for (qName <- Kestrel.queues.queueNames) {
-	          Kestrel.queues.flush(qName)
-	        }
-	        writeResponse("Flushed all queues.\r\n")
-	      case "DUMP_CONFIG" =>
-	        dumpConfig()
-	      case "DUMP_STATS" =>
-	        dumpStats()
-	      case "DELETE" =>
-	        delete(line(1))
-	      case "FLUSH_EXPIRED" =>
-	        flushExpired(line(1))
-	      case "FLUSH_ALL_EXPIRED" =>
-	        val flushed = Kestrel.queues.queueNames.foldLeft(0) { (sum, qName) => sum + Kestrel.queues.flushExpired(qName) }
-	        writeResponse("%d\r\n".format(flushed))
-	      case "VERSION" =>
-	        version()
-	    }
+      case ReloadCommand => {
+    	Configgy.reload
+    	writeResponse("Reloaded config.\r\n")
       }
+      
+      case FlushCommand(queueName) => flush(queueName)
+      case FlushAllCommand => {
+    	for (qName <- Kestrel.queues.queueNames) {
+    	  Kestrel.queues.flush(qName)
+    	}
+    	writeResponse("Flushed all queues.\r\n")
+      }
+
+      case FlushExpiredCommand(queueName) => flushExpired(queueName)
+      case FlushAllExpiredCommand => {
+    	val flushed = Kestrel.queues.queueNames.foldLeft(0) { (sum, qName) => sum + Kestrel.queues.flushExpired(qName) }
+    	writeResponse("%d\r\n".format(flushed))
+      }
+
+      case DumpConfigCommand => dumpConfig()
+	  case DumpStatsCommand => dumpStats()
+	  
+	  case VersionCommand => version()
     }
   }
 
   private def get(name: String, options: Options): Unit = {
-    val key = name
-    val timeout : Int = options.timeout match {
-      case Some(t) => t
-      case None => 0
-    }
-    val closing = options.closing
-    val opening = options.opening
-    val aborting = options.aborting
-    val peeking = options.peeking
+    val timeout = options.timeout.getOrElse(0)
 
-    log.debug("get -> q=%s t=%d open=%s close=%s abort=%s peek=%s", key, timeout, opening, closing, aborting, peeking)
+    log.debug("get -> q=%s t=%d open=%s close=%s abort=%s peek=%s", 
+              name, timeout, options.opening, options.closing, options.aborting, options.peeking)
 
     try {
-      if (aborting) {
-        if (!abortTransaction(key)) {
+      if (options.aborting) {
+        if (!abortTransaction(name)) {
           log.warning("Attempt to abort a non-existent transaction on '%s' (sid %d, %s:%d)",
-                      key, sessionID, remoteAddress.getHostName, remoteAddress.getPort)
+                      name, sessionID, remoteAddress.getHostName, remoteAddress.getPort)
         }
         writeResponse("END\r\n")
       } else {
-        if (closing) {
-          if (!closeTransaction(key)) {
+        if (options.closing) {
+          if (!closeTransaction(name)) {
             log.warning("Attempt to close a non-existent transaction on '%s' (sid %d, %s:%d)",
-                        key, sessionID, remoteAddress.getHostName, remoteAddress.getPort)
+                        name, sessionID, remoteAddress.getHostName, remoteAddress.getPort)
             // let the client continue. it may be optimistically closing previous transactions as
             // it randomly jumps servers.
           }
-          if (!opening) writeResponse("END\r\n")
+          if (!options.opening) writeResponse("END\r\n")
         }
-        if (opening || !closing) {
-          if (pendingTransaction.isDefined && !peeking) {
+        if (options.opening || !options.closing) {
+          if (pendingTransaction.isDefined && !options.peeking) {
             log.warning("Attempt to perform a non-transactional fetch with an open transaction on " +
-                        " '%s' (sid %d, %s:%d)", key, sessionID, remoteAddress.getHostName,
+                        " '%s' (sid %d, %s:%d)", name, sessionID, remoteAddress.getHostName,
                         remoteAddress.getPort)
             writeResponse("ERROR\r\n")
             session.close
             return
           }
-          if (peeking) {
+          if (options.peeking) {
             KestrelStats.peekRequests.incr
           } else {
             KestrelStats.getRequests.incr
           }
-          Kestrel.queues.remove(key, timeout, opening, peeking) {
+          Kestrel.queues.remove(name, timeout, options.opening, options.peeking) {
             case None =>
               writeResponse("END\r\n")
             case Some(item) =>
               log.debug("get <- %s", item)
-              if (opening) pendingTransaction = Some((key, item.xid))
-              writeResponse("VALUE %s 0 %d\r\n".format(key, item.data.length), item.data)
+              if (options.opening) pendingTransaction = Some((name, item.xid))
+              writeResponse("VALUE %s 0 %d\r\n".format(name, item.data.length), item.data)
           }
         }
       }
     } catch {
       case e: MismatchedQueueException =>
         log.warning("Attempt to close a transaction on the wrong queue '%s' (sid %d, %s:%d)",
-                    key, sessionID, remoteAddress.getHostName, remoteAddress.getPort)
+                    name, sessionID, remoteAddress.getHostName, remoteAddress.getPort)
         writeResponse("ERROR\r\n")
         session.close
     }

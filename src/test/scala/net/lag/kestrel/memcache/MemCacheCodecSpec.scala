@@ -93,5 +93,16 @@ object MemCacheCodecSpec extends Specification {
       written mustEqual List(SetCommand("foo", 0, 0, bytes("hello")))
       written = Nil
     }
+    
+    "'flush' command" in {
+      doDecode("flush foo\r\n")
+      written mustEqual List(FlushCommand("foo"))
+    }
+    
+    "'delete' command" in {
+      doDecode("delete foo\r\n")
+      written mustEqual List(DeleteCommand("foo"))
+    }
+    
   }
 }

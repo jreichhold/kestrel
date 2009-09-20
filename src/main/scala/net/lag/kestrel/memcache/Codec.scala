@@ -27,23 +27,10 @@ import net.lag.naggati.Steps._
 
 //import net.lag.kestrel.{Options, Command, GetCommand, SetCommand, OtherCommand}
 
-//case class Request(line: List[String], data: Option[Array[Byte]]) {
-//  override def toString = {
-//    "<Request: " + line.mkString("[", " ", "]") + (data match {
-//      case None => ""
-//      case Some(x) => ": " + x.hexlify
-//    }) + ">"
-//  }
-//}
-
 case class Response(data: IoBuffer)
 
 
 object Codec {
-  private val KNOWN_COMMANDS = List("GET", "SET", "STATS", "SHUTDOWN", "RELOAD", "FLUSH", "FLUSH_ALL",
-    "DUMP_CONFIG", "DUMP_STATS", "DELETE", "FLUSH_EXPIRED", "FLUSH_ALL_EXPIRED", "VERSION")
-  private val DATA_COMMANDS = List("SET")
-
   val encoder = new ProtocolEncoder {
     def encode(session: IoSession, message: AnyRef, out: ProtocolEncoderOutput) = {
       val buffer = message.asInstanceOf[Response].data
@@ -63,72 +50,79 @@ object Codec {
 
     val command = segments(0)
     
-    if (! KNOWN_COMMANDS.contains(command)) {
-      throw new ProtocolError("Invalid command: " + command)
+    def ret(cmd: Command) = {
+      state.out.write(cmd)
+      End
     }
 
-    if (DATA_COMMANDS.contains(command)) {
-      if (segments.length < 5) {
-        throw new ProtocolError("Malformed request line")
-      }
-      val dataBytes = segments(4).toInt
-      readBytes(dataBytes + 2) {
-        KestrelStats.bytesRead.incr(dataBytes + 2)
-        // final 2 bytes are just "\r\n" mandated by protocol.
-        val bytes = new Array[Byte](dataBytes)
-        state.buffer.get(bytes)
-        state.buffer.position(state.buffer.position + 2)
-        
-	    try {
-          state.out.write(SetCommand(segments(1), segments(2).toInt, segments(3).toInt, bytes))
-	    } catch {
-	      case e: NumberFormatException =>
-	        throw new ProtocolError("bad request: " + line)
-	    }
-        End
-      }
-
-    } else {
-      val res = command match {
-        case "GET" => {
-      	  val name = segments(1)
+    command match {
+      case "GET" => {
+        val name = segments(1)
          
-          var key = name
-          var timeout:Option[Int] = None
-          var closing = false
-          var opening = false
-          var aborting = false
-          var peeking = false
+        var key = name
+        var timeout:Option[Int] = None
+        var closing = false
+        var opening = false
+        var aborting = false
+        var peeking = false
 
-          if (name contains '/') {
-        	val options = name.split("/")
-        	key = options(0)
-        	for (i <- 1 until options.length) {
-        	  val opt = options(i)
-        	  if (opt startsWith "t=") {
-        	    timeout = Some(opt.substring(2).toInt)
-	          }
-	          if (opt == "close") closing = true
-	          if (opt == "open") opening = true
-	          if (opt == "abort") aborting = true
-	          if (opt == "peek") peeking = true
-	        }
-	      }
-      	  
-          if ((key.length == 0) || ((peeking || aborting) && (opening || closing)) || (peeking && aborting)) {
-            throw new ProtocolError("bad request: " + line)
+        if (name contains '/') {
+          val options = name.split("/")
+          key = options(0)
+          for (i <- 1 until options.length) {
+            val opt = options(i)
+            if (opt startsWith "t=") {
+              timeout = Some(opt.substring(2).toInt)
+            }
+            if (opt == "close") closing = true
+            if (opt == "open") opening = true
+            if (opt == "abort") aborting = true
+            if (opt == "peek") peeking = true
           }
+        }
 
-      	  GetCommand(key, Options(timeout, closing, opening, aborting, peeking))
-      	}
-       
-        case "FLUSH" => FlushCommand(segments(0))
-        
-      	case _ => OtherCommand(segments.toList)
+        if ((key.length == 0) || ((peeking || aborting) && (opening || closing)) || (peeking && aborting)) {
+          throw new ProtocolError("bad request: " + line)
+        }
+
+        ret(GetCommand(key, Options(timeout, closing, opening, aborting, peeking)))
       }
+        
+      case "SET" => {
+    	if (segments.length < 5) {
+    	  throw new ProtocolError("Malformed request line")
+    	}
+    	val dataBytes = segments(4).toInt
+    	readBytes(dataBytes + 2) {
+    	  KestrelStats.bytesRead.incr(dataBytes + 2)
+    	  // final 2 bytes are just "\r\n" mandated by protocol.
+    	  val bytes = new Array[Byte](dataBytes)
+    	  state.buffer.get(bytes)
+    	  state.buffer.position(state.buffer.position + 2)
 
-      state.out.write(res)
-      End
+    	  try {
+    		ret(SetCommand(segments(1), segments(2).toInt, segments(3).toInt, bytes))
+    	  } catch {
+    	    case e: NumberFormatException =>
+    	      throw new ProtocolError("bad request: " + line)
+    	  }
+    	}
+      }
+       
+      case "FLUSH" => ret(FlushCommand(segments(1)))
+      case "FLUSH_EXPIRED" => ret(FlushExpiredCommand(segments(1)))
+      case "DELETE" => ret(DeleteCommand(segments(1)))
+
+      case "STATS" => ret(StatsCommand)
+      case "SHUTDOWN" => ret(ShutdownCommand)
+      case "RELOAD" => ret(ReloadCommand)
+      case "FLUSH_ALL" => ret(FlushAllCommand)
+      case "DUMP_CONFIG" => ret(DumpConfigCommand)
+      case "DUMP_STATS" => ret(DumpStatsCommand)
+      case "FLUSH_ALL_EXPIRED" => ret(FlushAllExpiredCommand)
+      case "VERSION" => ret(VersionCommand)
+
+      case _ => throw new ProtocolError("Invalid command: " + command)
     }
   })
 }
