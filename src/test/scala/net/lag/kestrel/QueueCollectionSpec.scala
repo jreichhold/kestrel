@@ -22,6 +22,7 @@ import _root_.scala.util.Sorting
 import _root_.net.lag.configgy.Config
 import _root_.org.specs._
 
+import net.lag.kestrel.Protocol._
 
 object QueueCollectionSpec extends Specification with TestHelper {
 
@@ -45,8 +46,8 @@ object QueueCollectionSpec extends Specification with TestHelper {
         qc = new QueueCollection(folderName, Config.fromMap(Map.empty))
         qc.queueNames mustEqual Nil
 
-        qc.add("work1", "stuff".getBytes)
-        qc.add("work2", "other stuff".getBytes)
+        qc.add("work1", ItemData(0, "stuff".getBytes))
+        qc.add("work2", ItemData(0, "other stuff".getBytes))
 
         sorted(qc.queueNames) mustEqual List("work1", "work2")
         qc.currentBytes mustEqual 16
@@ -67,9 +68,9 @@ object QueueCollectionSpec extends Specification with TestHelper {
     "load from journal" in {
       withTempFolder {
         qc = new QueueCollection(folderName, Config.fromMap(Map.empty))
-        qc.add("ducklings", "huey".getBytes)
-        qc.add("ducklings", "dewey".getBytes)
-        qc.add("ducklings", "louie".getBytes)
+        qc.add("ducklings", ItemData(0, "huey".getBytes))
+        qc.add("ducklings", ItemData(0, "dewey".getBytes))
+        qc.add("ducklings", ItemData(0, "louie".getBytes))
         qc.queueNames mustEqual List("ducklings")
         qc.currentBytes mustEqual 14
         qc.currentItems mustEqual 3
@@ -87,8 +88,8 @@ object QueueCollectionSpec extends Specification with TestHelper {
     "queue hit/miss tracking" in {
       withTempFolder {
         qc = new QueueCollection(folderName, Config.fromMap(Map.empty))
-        qc.add("ducklings", "ugly1".getBytes)
-        qc.add("ducklings", "ugly2".getBytes)
+        qc.add("ducklings", ItemData(0, "ugly1".getBytes))
+        qc.add("ducklings", ItemData(0, "ugly2".getBytes))
         qc.queueHits() mustEqual 0
         qc.queueMisses() mustEqual 0
 
@@ -149,9 +150,9 @@ object QueueCollectionSpec extends Specification with TestHelper {
       "generate on the fly" in {
         withTempFolder {
           qc = new QueueCollection(folderName, Config.fromMap(Map.empty))
-          qc.add("jobs", "job1".getBytes)
+          qc.add("jobs", ItemData(0, "job1".getBytes))
           qc.receive("jobs+client1") mustEqual None
-          qc.add("jobs", "job2".getBytes)
+          qc.add("jobs", ItemData(0, "job2".getBytes))
 
           new String(qc.receive("jobs+client1").get) mustEqual "job2"
           new String(qc.receive("jobs").get) mustEqual "job1"
@@ -165,9 +166,9 @@ object QueueCollectionSpec extends Specification with TestHelper {
           new File(folderName + "/jobs+client1").createNewFile()
           qc = new QueueCollection(folderName, Config.fromMap(Map.empty))
           qc.loadQueues()
-          qc.add("jobs", "job1".getBytes)
+          qc.add("jobs", ItemData(0, "job1".getBytes))
           new String(qc.receive("jobs+client1").get) mustEqual "job1"
-          qc.add("jobs", "job2".getBytes)
+          qc.add("jobs", ItemData(0, "job2".getBytes))
 
           new String(qc.receive("jobs+client1").get) mustEqual "job2"
           new String(qc.receive("jobs").get) mustEqual "job1"
@@ -181,14 +182,14 @@ object QueueCollectionSpec extends Specification with TestHelper {
           new File(folderName + "/jobs+client1").createNewFile()
           qc = new QueueCollection(folderName, Config.fromMap(Map.empty))
           qc.loadQueues()
-          qc.add("jobs", "job1".getBytes)
+          qc.add("jobs", ItemData(0, "job1".getBytes))
 
           qc.delete("jobs+client1")
 
           sorted(new File(folderName).list().toList) mustEqual List("jobs")
           new String(qc.receive("jobs").get) mustEqual "job1"
 
-          qc.add("jobs", "job2".getBytes)
+          qc.add("jobs", ItemData(0, "job2".getBytes))
           sorted(new File(folderName).list().toList) mustEqual List("jobs")
           new String(qc.receive("jobs").get) mustEqual "job2"
         }
@@ -202,7 +203,7 @@ object QueueCollectionSpec extends Specification with TestHelper {
         qc = new QueueCollection(folderName, Config.fromMap(Map("jobs.move_expired_to" -> "expired")))
         Kestrel.queues = qc
         qc.loadQueues()
-        qc.add("jobs", "hello".getBytes, 1)
+        qc.add("jobs", ItemData(0, "hello".getBytes), 1)
         qc.queue("jobs").get.length mustEqual 1
         qc.queue("expired").get.length mustEqual 0
 

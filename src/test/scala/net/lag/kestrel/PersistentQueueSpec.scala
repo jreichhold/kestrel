@@ -25,6 +25,7 @@ import _root_.net.lag.configgy.Config
 import _root_.org.specs._
 import _root_.org.specs.matcher.Matcher
 
+import _root_.net.lag.kestrel.Protocol._
 
 object PersistentQueueSpec extends Specification with TestHelper {
 
@@ -78,7 +79,7 @@ object PersistentQueueSpec extends Specification with TestHelper {
   def put(q: PersistentQueue, bytes: Int, n: Int) {
     val data = new Array[Byte](bytes)
     data(0) = n.toByte
-    q.add(data)
+    q.add(ItemData(0, data))
   }
 
 
@@ -94,7 +95,7 @@ object PersistentQueueSpec extends Specification with TestHelper {
         q.bytes mustEqual 0
         q.journalSize mustEqual 0
 
-        q.add("hello kitty".getBytes)
+        q.add(ItemData(0, "hello kitty".getBytes))
 
         q.length mustEqual 1
         q.totalItems mustEqual 1
@@ -118,9 +119,9 @@ object PersistentQueueSpec extends Specification with TestHelper {
         val q = new PersistentQueue(folderName, "work", Config.fromMap(Map("max_item_size" -> "128")))
         q.setup
         q.length mustEqual 0
-        q.add(new Array[Byte](127)) mustEqual true
-        q.add(new Array[Byte](128)) mustEqual true
-        q.add(new Array[Byte](129)) mustEqual false
+        q.add(ItemData(0, new Array[Byte](127))) mustEqual true
+        q.add(ItemData(0, new Array[Byte](128))) mustEqual true
+        q.add(ItemData(0, new Array[Byte](129))) mustEqual false
         q.close
       }
     }
@@ -135,9 +136,9 @@ object PersistentQueueSpec extends Specification with TestHelper {
         q.bytes mustEqual 0
         q.journalSize mustEqual 0
 
-        q.add("alpha".getBytes)
-        q.add("beta".getBytes)
-        q.add("gamma".getBytes)
+        q.add(ItemData(0, "alpha".getBytes))
+        q.add(ItemData(0, "beta".getBytes))
+        q.add(ItemData(0, "gamma".getBytes))
         q.length mustEqual 3
 
         q.flush
@@ -156,8 +157,8 @@ object PersistentQueueSpec extends Specification with TestHelper {
         q.setup
         q.maxJournalSize set Some(64)
 
-        q.add(new Array[Byte](32))
-        q.add(new Array[Byte](64))
+        q.add(ItemData(0, new Array[Byte](32)))
+        q.add(ItemData(0, new Array[Byte](64)))
         q.length mustEqual 2
         q.totalItems mustEqual 2
         q.bytes mustEqual 32 + 64
@@ -186,9 +187,9 @@ object PersistentQueueSpec extends Specification with TestHelper {
         val q = makeQueue("walking")
         q.setup
 
-        q.add(new Array[Byte](32))
-        q.add(new Array[Byte](64))
-        q.add(new Array[Byte](10))
+        q.add(ItemData(0, new Array[Byte](32)))
+        q.add(ItemData(0, new Array[Byte](64)))
+        q.add(ItemData(0, new Array[Byte](10)))
 
         val j = new Journal(folderName + "/walking", false)
         j.walk().map {
@@ -204,8 +205,8 @@ object PersistentQueueSpec extends Specification with TestHelper {
       withTempFolder {
         val q = makeQueue("rolling")
         q.setup
-        q.add("first".getBytes)
-        q.add("second".getBytes)
+        q.add(ItemData(0, "first".getBytes))
+        q.add(ItemData(0, "second".getBytes))
         new String(q.remove.get.data) mustEqual "first"
         q.journalSize mustEqual 5 + 6 + 16 + 16 + 5 + 5 + 1
         q.close
@@ -229,13 +230,13 @@ object PersistentQueueSpec extends Specification with TestHelper {
       withTempFolder {
         val q = makeQueue("weather_updates", "max_age" -> "3")
         q.setup
-        q.add("sunny".getBytes) mustEqual true
+        q.add(ItemData(0, "sunny".getBytes)) mustEqual true
         q.length mustEqual 1
         Time.advance(3000)
         q.remove mustEqual None
 
         q.config("max_age") = 60
-        q.add("rainy".getBytes) mustEqual true
+        q.add(ItemData(0, "rainy".getBytes)) mustEqual true
         q.config("max_age") = 1
         Time.advance(5000)
         q.remove mustEqual None
@@ -363,7 +364,7 @@ object PersistentQueueSpec extends Specification with TestHelper {
             for (i <- 0 until 10) {
               val data = new Array[Byte](128)
               data(0) = i.toByte
-              q.add(data)
+              q.add(ItemData(0, data))
               q.inReadBehind mustEqual (i >= 8)
             }
             q.inReadBehind mustBe true
@@ -401,7 +402,7 @@ object PersistentQueueSpec extends Specification with TestHelper {
 
           actor {
             Thread.sleep(100)
-            q.add("hello".getBytes)
+            q.add(ItemData(0, "hello".getBytes))
           }
 
           var rv: String = null
@@ -423,8 +424,8 @@ object PersistentQueueSpec extends Specification with TestHelper {
         withMaxMemorySize(1024) {
           val q = makeQueue("things")
           q.setup
-          q.add("house".getBytes)
-          q.add("cat".getBytes)
+          q.add(ItemData(0, "house".getBytes))
+          q.add(ItemData(0, "cat".getBytes))
           q.journalSize mustEqual 2 * 21 + 8
 
           val house = q.remove(true).get
@@ -466,11 +467,11 @@ object PersistentQueueSpec extends Specification with TestHelper {
       withTempFolder {
         val q = new PersistentQueue(folderName, "things", Config.fromMap(Map.empty))
         q.setup
-        q.add("one".getBytes)
-        q.add("two".getBytes)
-        q.add("three".getBytes)
-        q.add("four".getBytes)
-        q.add("five".getBytes)
+        q.add(ItemData(0, "one".getBytes))
+        q.add(ItemData(0, "two".getBytes))
+        q.add(ItemData(0, "three".getBytes))
+        q.add(ItemData(0, "four".getBytes))
+        q.add(ItemData(0, "five".getBytes))
 
         val item1 = q.remove(true)
         item1 must beSome[QItem].which { item => new String(item.data) == "one" }
@@ -501,10 +502,10 @@ object PersistentQueueSpec extends Specification with TestHelper {
       withTempFolder {
         val q = makeQueue("things", "max_journal_size" -> "1024", "max_journal_overflow" -> "3")
         q.setup
-        q.add(new Array[Byte](512))
+        q.add(ItemData(0, new Array[Byte](512)))
         // can't roll the journal normally, cuz there's always one item left.
         for (i <- 0 until 5) {
-          q.add(new Array[Byte](512))
+          q.add(ItemData(0, new Array[Byte](512)))
           // last remove will be an incomplete transaction:
           q.remove(i == 4) must beSomeQItem(512)
         }
@@ -512,7 +513,7 @@ object PersistentQueueSpec extends Specification with TestHelper {
         q.journalSize mustEqual (512 * 6) + (6 * 21) + 5
 
         // next add should force a recreate.
-        q.add(new Array[Byte](512))
+        q.add(ItemData(0, new Array[Byte](512)))
         q.length mustEqual 3
         q.journalSize mustEqual ((512 + 16) * 3) + 9 + 1 + 5 + (5 * 2)
 
@@ -527,7 +528,7 @@ object PersistentQueueSpec extends Specification with TestHelper {
         val q = makeQueue("things", "max_journal_size" -> "1024", "max_journal_overflow" -> "3")
         q.setup
         for (i <- 0 until 8) {
-          q.add(new Array[Byte](512))
+          q.add(ItemData(0, new Array[Byte](512)))
         }
         q.length mustEqual 8
         q.bytes mustEqual 4096
@@ -556,7 +557,7 @@ object PersistentQueueSpec extends Specification with TestHelper {
         val q = makeQueue("mem", "journal" -> "off")
         q.setup
 
-        q.add("coffee".getBytes)
+        q.add(ItemData(0, "coffee".getBytes))
         new File(folderName, "mem").exists mustBe false
         q.remove must beSomeQItem("coffee")
       }
@@ -566,7 +567,7 @@ object PersistentQueueSpec extends Specification with TestHelper {
       withTempFolder {
         val q = makeQueue("mem", "journal" -> "off")
         q.setup
-        q.add("coffee".getBytes)
+        q.add(ItemData(0, "coffee".getBytes))
         q.close
 
         val q2 = makeQueue("mem", "journal" -> "off")
@@ -582,8 +583,8 @@ object PersistentQueueSpec extends Specification with TestHelper {
       withTempFolder {
         val q = makeQueue("weather_updates", "max_items" -> "1")
         q.setup
-        q.add("sunny".getBytes) mustEqual true
-        q.add("rainy".getBytes) mustEqual false
+        q.add(ItemData(0, "sunny".getBytes)) mustEqual true
+        q.add(ItemData(0, "rainy".getBytes)) mustEqual false
         q.length mustEqual 1
         q.remove must beSomeQItem("sunny")
       }
@@ -593,9 +594,9 @@ object PersistentQueueSpec extends Specification with TestHelper {
       withTempFolder {
         val q = makeQueue("weather_updates", "max_size" -> "510")
         q.setup
-        q.add(("a" * 256).getBytes) mustEqual true
-        q.add(("b" * 256).getBytes) mustEqual true
-        q.add("television".getBytes) mustEqual false
+        q.add(ItemData(0, ("a" * 256).getBytes)) mustEqual true
+        q.add(ItemData(0, ("b" * 256).getBytes)) mustEqual true
+        q.add(ItemData(0, "television".getBytes)) mustEqual false
         q.length mustEqual 2
         q.bytes mustEqual 512
         q.remove must beSomeQItem("a" * 256)
@@ -606,10 +607,10 @@ object PersistentQueueSpec extends Specification with TestHelper {
       withTempFolder {
         val q = makeQueue("weather_updates", "max_items" -> "3", "discard_old_when_full" -> "true")
         q.setup
-        q.add("sunny".getBytes) mustEqual true
-        q.add("rainy".getBytes) mustEqual true
-        q.add("cloudy".getBytes) mustEqual true
-        q.add("snowy".getBytes) mustEqual true
+        q.add(ItemData(0, "sunny".getBytes)) mustEqual true
+        q.add(ItemData(0, "rainy".getBytes)) mustEqual true
+        q.add(ItemData(0, "cloudy".getBytes)) mustEqual true
+        q.add(ItemData(0, "snowy".getBytes)) mustEqual true
         q.length mustEqual 3
         q.remove must beSomeQItem("rainy")
       }

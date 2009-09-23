@@ -23,6 +23,7 @@ import scala.collection.mutable
 import net.lag.configgy.{Config, ConfigMap}
 import net.lag.logging.Logger
 
+import net.lag.kestrel.Protocol._
 
 class InaccessibleQueuePath extends Exception("Inaccessible queue path: Must be a directory and writable")
 
@@ -100,7 +101,7 @@ class QueueCollection(queueFolder: String, private var queueConfigs: ConfigMap) 
    * @return true if the item was added; false if the server is shutting
    *     down
    */
-  def add(key: String, item: Array[Byte], expiry: Int): Boolean = {
+  def add(key: String, item: ItemData, expiry: Int): Boolean = {
     for (fanouts <- fanout_queues.get(key); name <- fanouts) {
       add(name, item, expiry)
     }
@@ -122,7 +123,7 @@ class QueueCollection(queueFolder: String, private var queueConfigs: ConfigMap) 
     }
   }
 
-  def add(key: String, item: Array[Byte]): Boolean = add(key, item, 0)
+  def add(key: String, item: ItemData): Boolean = add(key, item, 0)
 
   /**
    * Retrieve an item from a queue and pass it to a continuation. If no item is available within

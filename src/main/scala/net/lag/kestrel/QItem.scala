@@ -19,7 +19,6 @@ package net.lag.kestrel
 
 import java.nio.{ByteBuffer, ByteOrder}
 
-
 case class QItem(addTime: Long, expiry: Long, data: Array[Byte], var xid: Int) {
   def pack(): Array[Byte] = {
     val bytes = new Array[Byte](data.length + 16)

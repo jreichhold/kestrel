@@ -30,6 +30,8 @@ import org.apache.mina.core.buffer.IoBuffer
 import org.apache.mina.core.session.{IdleStatus, IoSession}
 import org.apache.mina.transport.socket.SocketSessionConfig
 
+import net.lag.kestrel.KestrelStats
+import net.lag.kestrel.Protocol._
 
 class KestrelHandler(val session: IoSession, val config: Config) extends Actor {
   private val log = Logger.get
@@ -63,7 +65,7 @@ class KestrelHandler(val session: IoSession, val config: Config) extends Actor {
     loop {
       react {
         case MinaMessage.MessageReceived(msg) =>
-          handle(msg.asInstanceOf[Command])
+          handle(msg.asInstanceOf[Request])
 
         case MinaMessage.ExceptionCaught(cause) => {
           cause.getCause match {
@@ -106,37 +108,37 @@ class KestrelHandler(val session: IoSession, val config: Config) extends Actor {
     session.write(new memcache.Response(buffer))
   }
 
-  private def handle(request: Command) = {
+  private def handle(request: Request) = {
     request match {
-      case GetCommand(queueName, options) => get(queueName, options)
-      case SetCommand(queueName, flags, expiry, data) => set(queueName, flags, expiry, data)
-      case DeleteCommand(queueName) => delete(queueName)
-      case StatsCommand => stats
-      case ShutdownCommand => shutdown
+      case GetRequest(queueName, options) => get(queueName, options)
+      case SetRequest(queueName, expiry, data) => set(queueName, expiry, data)
+      case DeleteRequest(queueName) => delete(queueName)
+      case StatsRequest => stats
+      case ShutdownRequest => shutdown
       
-      case ReloadCommand => {
+      case ReloadRequest => {
     	Configgy.reload
     	writeResponse("Reloaded config.\r\n")
       }
       
-      case FlushCommand(queueName) => flush(queueName)
-      case FlushAllCommand => {
+      case FlushRequest(queueName) => flush(queueName)
+      case FlushAllRequest => {
     	for (qName <- Kestrel.queues.queueNames) {
     	  Kestrel.queues.flush(qName)
     	}
     	writeResponse("Flushed all queues.\r\n")
       }
 
-      case FlushExpiredCommand(queueName) => flushExpired(queueName)
-      case FlushAllExpiredCommand => {
+      case FlushExpiredRequest(queueName) => flushExpired(queueName)
+      case FlushAllExpiredRequest => {
     	val flushed = Kestrel.queues.queueNames.foldLeft(0) { (sum, qName) => sum + Kestrel.queues.flushExpired(qName) }
     	writeResponse("%d\r\n".format(flushed))
       }
 
-      case DumpConfigCommand => dumpConfig()
-	  case DumpStatsCommand => dumpStats()
+      case DumpConfigRequest => dumpConfig()
+	  case DumpStatsRequest => dumpStats()
 	  
-	  case VersionCommand => version()
+	  case VersionRequest => version()
     }
   }
 
@@ -230,10 +232,10 @@ class KestrelHandler(val session: IoSession, val config: Config) extends Actor {
     pendingTransaction = None
   }
 
-  private def set(name: String, flags: Int, expiry: Int, data: Array[Byte]) = {
-    log.debug("set -> q=%s flags=%d expiry=%d size=%d", name, flags, expiry, data.length)
+  private def set(name: String, expiry: Int, item: ItemData) = {
+    log.debug("set -> q=%s expiry=%d flags=%d size=%d", name, expiry, item.flags, item.data.length)
     KestrelStats.setRequests.incr
-    if (Kestrel.queues.add(name, data, expiry)) {
+    if (Kestrel.queues.add(name, item, expiry)) {
       writeResponse("STORED\r\n")
     } else {
       writeResponse("NOT_STORED\r\n")

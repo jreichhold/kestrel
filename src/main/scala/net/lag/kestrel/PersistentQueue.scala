@@ -26,6 +26,7 @@ import scala.collection.mutable
 import net.lag.configgy.{Config, Configgy, ConfigMap}
 import net.lag.logging.Logger
 
+import net.lag.kestrel.Protocol._
 
 // a config value that's backed by a global setting but may be locally overridden
 class OverlaySetting[T](base: => T) {
@@ -205,8 +206,8 @@ class PersistentQueue(persistencePath: String, val name: String,
   /**
    * Add a value to the end of the queue, transactionally.
    */
-  def add(value: Array[Byte], expiry: Long): Boolean = synchronized {
-    if (closed || value.size > maxItemSize()) return false
+  def add(value: ItemData, expiry: Long): Boolean = synchronized {
+    if (closed || value.data.size > maxItemSize()) return false
     while (queueLength >= maxItems() || queueSize >= maxSize()) {
       if (!discardOldWhenFull()) return false
       _remove(false)
@@ -215,7 +216,7 @@ class PersistentQueue(persistencePath: String, val name: String,
     }
 
     val now = Time.now
-    val item = QItem(now, adjustExpiry(now, expiry), value, 0)
+    val item = QItem(now, adjustExpiry(now, expiry), value.data, 0)
     if (keepJournal() && !journal.inReadBehind) {
       if (journal.size > maxJournalSize() * maxJournalOverflow() && queueSize < maxJournalSize()) {
         // force re-creation of the journal.
@@ -235,7 +236,7 @@ class PersistentQueue(persistencePath: String, val name: String,
     true
   }
 
-  def add(value: Array[Byte]): Boolean = add(value, 0)
+  def add(value: ItemData): Boolean = add(value, 0)
 
   /**
    * Peek at the head item in the queue, if there is one.
@@ -529,7 +530,8 @@ class PersistentQueue(persistencePath: String, val name: String,
         queueLength -= 1
         fillReadBehind
         if (keepJournal()) journal.remove()
-        expiredQueue().map { _.add(item.data, 0) }
+        // FIXME ItemData shouldnt be constructed here
+        expiredQueue().map { _.add(ItemData(0, item.data), 0) }
         1 + discardExpired()
       } else {
         0

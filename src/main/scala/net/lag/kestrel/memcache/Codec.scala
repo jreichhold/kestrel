@@ -25,7 +25,7 @@ import net.lag.extensions._
 import net.lag.naggati.{Decoder, End, ProtocolError, Step}
 import net.lag.naggati.Steps._
 
-//import net.lag.kestrel.{Options, Command, GetCommand, SetCommand, OtherCommand}
+import net.lag.kestrel.Protocol._
 
 case class Response(data: IoBuffer)
 
@@ -50,7 +50,8 @@ object Codec {
 
     val command = segments(0)
     
-    def ret(cmd: Command) = {
+    // temporarily make eclipse feel sane
+    def ret(cmd: net.lag.kestrel.Protocol.Request) = {
       state.out.write(cmd)
       End
     }
@@ -85,7 +86,7 @@ object Codec {
           throw new ProtocolError("bad request: " + line)
         }
 
-        ret(GetCommand(key, Options(timeout, closing, opening, aborting, peeking)))
+        ret(GetRequest(key, Options(timeout, closing, opening, aborting, peeking)))
       }
         
       case "SET" => {
@@ -101,7 +102,7 @@ object Codec {
     	  state.buffer.position(state.buffer.position + 2)
 
     	  try {
-    		ret(SetCommand(segments(1), segments(2).toInt, segments(3).toInt, bytes))
+    		ret(SetRequest(segments(1), segments(3).toInt, ItemData(segments(2).toInt, bytes)))
     	  } catch {
     	    case e: NumberFormatException =>
     	      throw new ProtocolError("bad request: " + line)
@@ -109,20 +110,20 @@ object Codec {
     	}
       }
        
-      case "FLUSH" => ret(FlushCommand(segments(1)))
-      case "FLUSH_EXPIRED" => ret(FlushExpiredCommand(segments(1)))
-      case "DELETE" => ret(DeleteCommand(segments(1)))
+      case "FLUSH" => ret(FlushRequest(segments(1)))
+      case "FLUSH_EXPIRED" => ret(FlushExpiredRequest(segments(1)))
+      case "DELETE" => ret(DeleteRequest(segments(1)))
 
-      case "STATS" => ret(StatsCommand)
-      case "SHUTDOWN" => ret(ShutdownCommand)
-      case "RELOAD" => ret(ReloadCommand)
-      case "FLUSH_ALL" => ret(FlushAllCommand)
-      case "DUMP_CONFIG" => ret(DumpConfigCommand)
-      case "DUMP_STATS" => ret(DumpStatsCommand)
-      case "FLUSH_ALL_EXPIRED" => ret(FlushAllExpiredCommand)
-      case "VERSION" => ret(VersionCommand)
+      case "STATS" => ret(StatsRequest)
+      case "SHUTDOWN" => ret(ShutdownRequest)
+      case "RELOAD" => ret(ReloadRequest)
+      case "FLUSH_ALL" => ret(FlushAllRequest)
+      case "DUMP_CONFIG" => ret(DumpConfigRequest)
+      case "DUMP_STATS" => ret(DumpStatsRequest)
+      case "FLUSH_ALL_EXPIRED" => ret(FlushAllExpiredRequest)
+      case "VERSION" => ret(VersionRequest)
 
-      case _ => throw new ProtocolError("Invalid command: " + command)
+      case _ => throw new ProtocolError("Invalid Request: " + command)
     }
   })
 }

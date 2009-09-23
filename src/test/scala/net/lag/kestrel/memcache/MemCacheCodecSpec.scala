@@ -23,7 +23,7 @@ import org.apache.mina.core.session.{DummySession, IoSession}
 import org.apache.mina.filter.codec._
 import org.specs._
 
-import net.lag.kestrel.{Command, GetCommand, OtherCommand}
+import net.lag.kestrel.Protocol._
 
 object MemCacheCodecSpec extends Specification {
 
@@ -48,13 +48,13 @@ object MemCacheCodecSpec extends Specification {
 
     "'get' request chunked various ways" in {
       doDecode("get foo\r\n")
-      written mustEqual List(GetCommand("foo", NoOptions))
+      written mustEqual List(GetRequest("foo", NoOptions))
       written = Nil
 
       doDecode("get f")
       written mustEqual Nil
       doDecode("oo\r\n")
-      written mustEqual List(GetCommand("foo", NoOptions))
+      written mustEqual List(GetRequest("foo", NoOptions))
       written = Nil
 
       doDecode("g")
@@ -62,27 +62,27 @@ object MemCacheCodecSpec extends Specification {
       doDecode("et foo\r")
       written mustEqual Nil
       doDecode("\nget ")
-      written mustEqual List(GetCommand("foo", NoOptions))
+      written mustEqual List(GetRequest("foo", NoOptions))
       doDecode("bar\r\n")
-      written mustEqual List(GetCommand("bar", NoOptions), GetCommand("foo", NoOptions))
+      written mustEqual List(GetRequest("bar", NoOptions), GetRequest("foo", NoOptions))
     }
 
     "'get' with options" in {
       doDecode("get foo/t=5/close/open\r\n")
-      written mustEqual List(GetCommand("foo", Options(Some(5), true, true, false, false)))
+      written mustEqual List(GetRequest("foo", Options(Some(5), true, true, false, false)))
     }
     
     "'set' request chunked various ways" in {
       def bytes(s:String) = s.getBytes("ISO-8859-1")
       
       doDecode("set foo 0 0 5\r\nhello\r\n")
-      written mustEqual List(SetCommand("foo", 0, 0, bytes("hello")))
+      written mustEqual List(SetRequest("foo", 0, ItemData(0, bytes("hello"))))
       written = Nil
 
       doDecode("set foo 0 0 5\r\n")
       written mustEqual Nil
       doDecode("hello\r\n")
-      written mustEqual List(SetCommand("foo", 0, 0, bytes("hello")))
+      written mustEqual List(SetRequest("foo", 0, ItemData(0, bytes("hello"))))
       written = Nil
 
       doDecode("set foo 0 0 5")
@@ -90,18 +90,18 @@ object MemCacheCodecSpec extends Specification {
       doDecode("\r\nhell")
       written mustEqual Nil
       doDecode("o\r\n")
-      written mustEqual List(SetCommand("foo", 0, 0, bytes("hello")))
+      written mustEqual List(SetRequest("foo", 0, ItemData(0, bytes("hello"))))
       written = Nil
     }
     
-    "'flush' command" in {
+    "'flush' Request" in {
       doDecode("flush foo\r\n")
-      written mustEqual List(FlushCommand("foo"))
+      written mustEqual List(FlushRequest("foo"))
     }
     
-    "'delete' command" in {
+    "'delete' Request" in {
       doDecode("delete foo\r\n")
-      written mustEqual List(DeleteCommand("foo"))
+      written mustEqual List(DeleteRequest("foo"))
     }
     
   }
