@@ -30,8 +30,7 @@ import org.apache.mina.core.buffer.IoBuffer
 import org.apache.mina.core.session.{IdleStatus, IoSession}
 import org.apache.mina.transport.socket.SocketSessionConfig
 
-import net.lag.kestrel.KestrelStats
-import net.lag.kestrel.Protocol._
+import Protocol._
 
 class KestrelHandler(val session: IoSession, val config: Config) extends Actor {
   private val log = Logger.get
@@ -67,7 +66,7 @@ class KestrelHandler(val session: IoSession, val config: Config) extends Actor {
         case MinaMessage.MessageReceived(msg) =>
           handle(msg.asInstanceOf[Request])
 
-        case MinaMessage.ExceptionCaught(cause) => {
+        case MinaMessage.ExceptionCaught(cause) =>
           cause.getCause match {
             case _: ProtocolError => writeResponse("CLIENT_ERROR\r\n")
             case _: IOException =>
@@ -77,7 +76,6 @@ class KestrelHandler(val session: IoSession, val config: Config) extends Actor {
               writeResponse("ERROR\r\n")
           }
           session.close
-        }
 
         case MinaMessage.SessionClosed =>
           log.debug("End of session %d", sessionID)
@@ -115,37 +113,34 @@ class KestrelHandler(val session: IoSession, val config: Config) extends Actor {
       case DeleteRequest(queueName) => delete(queueName)
       case StatsRequest => stats
       case ShutdownRequest => shutdown
-      
-      case ReloadRequest => {
-    	Configgy.reload
-    	writeResponse("Reloaded config.\r\n")
-      }
-      
+
+      case ReloadRequest =>
+      	Configgy.reload
+      	writeResponse("Reloaded config.\r\n")
+
       case FlushRequest(queueName) => flush(queueName)
-      case FlushAllRequest => {
-    	for (qName <- Kestrel.queues.queueNames) {
-    	  Kestrel.queues.flush(qName)
-    	}
-    	writeResponse("Flushed all queues.\r\n")
-      }
+      case FlushAllRequest =>
+    	  for (qName <- Kestrel.queues.queueNames) {
+      	  Kestrel.queues.flush(qName)
+      	}
+    	  writeResponse("Flushed all queues.\r\n")
 
       case FlushExpiredRequest(queueName) => flushExpired(queueName)
-      case FlushAllExpiredRequest => {
-    	val flushed = Kestrel.queues.queueNames.foldLeft(0) { (sum, qName) => sum + Kestrel.queues.flushExpired(qName) }
-    	writeResponse("%d\r\n".format(flushed))
-      }
+      case FlushAllExpiredRequest =>
+    	  val flushed = Kestrel.queues.queueNames.foldLeft(0) { (sum, qName) => sum + Kestrel.queues.flushExpired(qName) }
+    	  writeResponse("%d\r\n".format(flushed))
 
       case DumpConfigRequest => dumpConfig()
-	  case DumpStatsRequest => dumpStats()
-	  
-	  case VersionRequest => version()
+	    case DumpStatsRequest => dumpStats()
+
+	    case VersionRequest => version()
     }
   }
 
   private def get(name: String, options: Options): Unit = {
     val timeout = options.timeout.getOrElse(0)
 
-    log.debug("get -> q=%s t=%d open=%s close=%s abort=%s peek=%s", 
+    log.debug("get -> q=%s t=%d open=%s close=%s abort=%s peek=%s",
               name, timeout, options.opening, options.closing, options.aborting, options.peeking)
 
     try {
