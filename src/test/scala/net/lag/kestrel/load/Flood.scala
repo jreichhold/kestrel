@@ -106,13 +106,14 @@ object Flood {
 
     val totalItems = System.getProperty("items", "10000").toInt
     val kilobytes = System.getProperty("k", "1").toInt
+    val kestrelHost = System.getProperty("host", "localhost")
     val data = DATA * kilobytes
 
     println("flood: " + totalItems + " items of " + kilobytes + "kB")
 
     val producerThread = new Thread {
       override def run = {
-        val socket = SocketChannel.open(new InetSocketAddress("localhost", 22133))
+        val socket = SocketChannel.open(new InetSocketAddress(kestrelHost, 22133))
         val qName = "spam"
         put(socket, qName, totalItems, data)
       }
@@ -120,7 +121,7 @@ object Flood {
     val consumerThread = new Thread {
       var misses = 0
       override def run = {
-        val socket = SocketChannel.open(new InetSocketAddress("localhost", 22133))
+        val socket = SocketChannel.open(new InetSocketAddress(kestrelHost, 22133))
         val qName = "spam"
         misses = get(socket, qName, totalItems, data)
       }

@@ -132,6 +132,7 @@ object ManyClients {
     }
 
     val clientCount = System.getProperty("clients", "100").toInt
+    val kestrelHost = System.getProperty("host", "localhost")
 
     var threadList: List[Thread] = Nil
     val startTime = System.currentTimeMillis
@@ -139,7 +140,7 @@ object ManyClients {
     for (i <- 0 until clientCount) {
       val t = new Thread {
         override def run = {
-          val socket = SocketChannel.open(new InetSocketAddress("localhost", 22133))
+          val socket = SocketChannel.open(new InetSocketAddress(kestrelHost, 22133))
           getStuff(socket, "spam")
         }
       }
@@ -148,7 +149,7 @@ object ManyClients {
     }
     val t = new Thread {
       override def run = {
-        val socket = SocketChannel.open(new InetSocketAddress("localhost", 22133))
+        val socket = SocketChannel.open(new InetSocketAddress(kestrelHost, 22133))
         put(socket, "spam", COUNT)
       }
     }
